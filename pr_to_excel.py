@@ -1,7 +1,7 @@
 import requests
 import abc
 import copy
-from typing import List, TypedDict, FrozenSet, Tuple, Generic, TypeVar
+from typing import List, TypedDict, Tuple, Generic, TypeVar, Optional
 from datetime import datetime
 import dateutil.parser
 import traceback
@@ -15,7 +15,6 @@ import xlsxwriter
 
 
 _DEFAULT_TOKEN = "0000000000000000000000000000000000000000"
-
 class Defines:
     API_ENDPOINT = "https://api.github.com/graphql"
     DEFAULT_TOKEN = _DEFAULT_TOKEN
@@ -29,22 +28,22 @@ class Defines:
     PR_CLOSED_STATE = 'CLOSED'
 
 
-def parse_isodate(iso8601date: str) -> Tuple[datetime, Exception]:
+def parse_isodate(iso8601date: str) -> Tuple[datetime, Optional[Exception]]:
     try:
         return dateutil.parser.isoparse(iso8601date), None
     except Exception as err:
         return dateutil.parser.isoparse(Defines.DEFAULT_DATE_STR), err
 
 
-def date_to_ddmmyy_hhmm(date : datetime) -> str:
+def date_to_ddmmyy_hhmm(date: datetime) -> str:
     return f'{date.day}/{date.month}/{date.year} {date.hour}:{date.minute}'
 
 
-def run_query(query : str, variables: str, headers : dict) -> dict:
+def run_query(query: str, variables: Optional[str], headers: dict) -> dict:
     """ Sends http request to github graphql api """
 
-    requestJson = { 'query': query }
-    if variables != None:
+    requestJson: dict = {'query': query}
+    if variables is not None:
         requestJson['variables'] = variables
 
     request = requests.post(Defines.API_ENDPOINT, json=requestJson, headers=headers)
@@ -69,16 +68,16 @@ class ActorJson(TypedDict):
 NodeType = TypeVar('NodeType')
 
 
-class GraphQlNodeJson(Generic[NodeType]):
+class GraphQlNodeJson(Generic[NodeType]): #, TypedDict):
     node: NodeType
 
 
-class GraphQlListJson(Generic[NodeType]):
+class GraphQlListJson(Generic[NodeType]): #, TypedDict):
     totalCount: int
     edges: List[GraphQlNodeJson[NodeType]]
 
 
-class _PullRequestJson_Review(TypedDict):
+class PullRequestJson_Review(TypedDict):
     author: ActorJson
     createdAt: str
 
@@ -87,19 +86,27 @@ class PullRequestJson(TypedDict):
     author: ActorJson
     createdAt: str
     state: str
-    mergedAt: str
-    mergedBy: ActorJson
-    approvedReviews: GraphQlListJson[_PullRequestJson_Review]
+    mergedAt: Optional[str]
+    mergedBy: Optional[ActorJson]
+    approvedReviews: GraphQlListJson[PullRequestJson_Review]
     closed: bool
     title: str
 
 
-class _PullRequestJson_Repository(TypedDict):
+class PullRequestJson_PullRequests(TypedDict):
     pullRequests: GraphQlListJson[PullRequestJson]
 
 
+class PullRequestJson_Repository(TypedDict):
+    repository: PullRequestJson_PullRequests
+
+
+class PullRequestJson_RepositoryOwner(TypedDict):
+    repositoryOwner: PullRequestJson_Repository
+
+
 class PullRequestQueryJson(TypedDict):
-    repositoryOwner: _PullRequestJson_Repository
+    data: PullRequestJson_RepositoryOwner
 
 
 ####################################
@@ -119,6 +126,10 @@ class PullRequest:
         self.createdAt: datetime    = parse_isodate(prJson['createdAt'])[0]
         self.title: str             = prJson['title']
         self.closed: bool           = prJson['closed']
+        self.firstReview: Optional[PullRequest.Review]
+        self.mergedAt: Optional[datetime]
+        self.mergedBy: Optional[ActorJson]
+
         if prJson['approvedReviews']['totalCount'] == 0:
             self.firstReview        = None
             self.state: str         = prJson['state']
@@ -131,12 +142,12 @@ class PullRequest:
             else:
                 self.state: str     = prJson['state']
 
-        if prJson['mergedAt'] == None:
-            self.mergedAt: datetime = None
-            self.mergedBy: str = None
+        if prJson['mergedAt'] is None:
+            self.mergedAt = None
+            self.mergedBy = None
         else:
-            self.mergedAt: datetime = parse_isodate(prJson['mergedAt'])[0]
-            self.mergedBy: str = prJson['mergedBy']['login']
+            self.mergedAt = parse_isodate(prJson['mergedAt'])[0]
+            self.mergedBy = prJson['mergedBy']['login']
 
         self.title = prJson['title']
  
@@ -154,7 +165,7 @@ class PullRequest:
         for prJson in prJsonList['edges']:
             try:
                 result = PullRequest.create_if_approved_or_merged(prJson['node'])
-                if result != None:
+                if result is not None:
                     outputList.append(result)
             except Exception as err:
                 traceback.print_exc()
@@ -169,17 +180,18 @@ class PullRequest:
 
 
 class PromptArg(abc.ABC):
-    def __init__(self, key_name: str, type: str):
-        self.key_name = key_name
-        self.cmd_text = f'-{key_name}'
-        self.type = type
+    def __init__(self, key_name: str, p_type: str):
+        self.key_name: str = key_name
+        self.cmd_text: str = f'-{key_name}'
+        self.type: str     = p_type
 
     @abc.abstractmethod
     def apply_arg(self, targetKey: str, targetDict: dict):
         pass
         
-    def read_args(self, iterIndex : int, args : Tuple[str]) -> (int, Exception):
+    def read_args(self, iterIndex: int, args: Tuple[str]) -> Tuple[int, Optional[Exception]]:
         pass
+
 
 _RepoPromptArg_KEY_NAME = 'repos'
 class RepoPromptArg(PromptArg):
@@ -195,8 +207,8 @@ class RepoPromptArg(PromptArg):
     def apply_arg(self, targetKey: str, targetDict: dict):
         targetDict[targetKey] = targetDict[targetKey] + copy.copy(self.repoList)
 
-    def read_args(self, iterIndex : int, args : Tuple[str]) -> (int, Exception):
-        err: Exception = None
+    def read_args(self, iterIndex: int, args: Tuple[str]) -> Tuple[int, Optional[Exception]]:
+        err: Optional[Exception] = None
         try:
             lastIndex = len(args) - 1
             oldCount = len(self.repoList)
@@ -232,7 +244,7 @@ class ApiTokenPromptArg(PromptArg):
     def apply_arg(self, targetKey: str, targetDict: dict):
         targetDict[targetKey] = self.token
 
-    def read_args(self, iterIndex : int, args : List[str]) -> (int, Exception):
+    def read_args(self, iterIndex: int, args: List[str]) -> Tuple[int, Optional[Exception]]:
         newIndex = iterIndex
         try:
             if self.cmd_text != args[newIndex]:
@@ -310,7 +322,7 @@ def generate_excel(argv: Tuple[str]):
         RepoPromptArg.CMD_TEXT: [],
         ApiTokenPromptArg.CMD_TEXT: Defines.DEFAULT_TOKEN,
         NumberOfRequestsPromptArg.CMD_TEXT: 10,
-        'filename': Defines.DEFAULT_OUTPUT_EXCEL
+        'out_filename': Defines.DEFAULT_OUTPUT_EXCEL
     }
     iterIndex = 1
     argvCount = len(argv)
@@ -318,9 +330,8 @@ def generate_excel(argv: Tuple[str]):
     usedSwitches = set()
 
     while iterIndex < argvCount:
-        err : Exception        = None
-        cmdSwitch : PromptArg  = None
-        cmdKey: str            = argv[iterIndex]
+        cmdSwitch: PromptArg
+        cmdKey: str               = argv[iterIndex]
 
         if cmdKey not in Defines_CMD.SWITCHES:
             raise RuntimeError(f'Unknown switch: "{cmdKey}"')
@@ -329,16 +340,16 @@ def generate_excel(argv: Tuple[str]):
         else:
             cmdSwitch = Defines_CMD.SWITCHES[cmdKey]
             iterIndex, err = cmdSwitch.read_args(iterIndex, argv)
-            if err != None:
+            if err is not None:
                 raise err 
             cmdSwitch.apply_arg(cmdKey, inputDict)
         
         iterIndex = iterIndex + 1
         usedSwitches.add(cmdKey)
 
-    headers = { 'Authorization' : f'token {inputDict[ApiTokenPromptArg.CMD_TEXT]}' }
+    headers = { 'Authorization': f'token {inputDict[ApiTokenPromptArg.CMD_TEXT]}' }
 
-    with PRExcelWriter(inputDict['filename']) as excelWriter:
+    with PRExcelWriter(inputDict['out_filename']) as excelWriter:
         for repoPath in inputDict[RepoPromptArg.CMD_TEXT]:            
             resultJson: PullRequestQueryJson  = fetch_json(repoPath, inputDict, headers)
             resultList: List[PullRequest]     = PullRequest.create_list_of_approved_or_merged(resultJson)
@@ -348,7 +359,7 @@ def generate_excel(argv: Tuple[str]):
             print(f'\n-- Number of approved|merged pull requests: [ {len(resultList)} ]--')
             for pr in resultList:
                 print(f'\n-- Writing new approved pull request: [ {pr.title} ] --')
-                excelWriter.add_new_pullrequest(pr)
+                excelWriter.add_new_pull_request(pr)
 
 
 _fetch_json_query = """
@@ -393,6 +404,7 @@ query(
   }
 }"""
 
+
 def fetch_json(repoPath: str, inputDict: PullRequestQueryInputDict, headers: dict) -> PullRequestQueryJson:
     repo_owner, repo_name = repoPath.split('/')
 
@@ -420,15 +432,15 @@ def fetch_json(repoPath: str, inputDict: PullRequestQueryInputDict, headers: dic
 _empty_excel_cell = 'N/A'
 class PRExcelWriter:
     COLUMN_LABELS = {
-        'author' : 0,
-        'created_at' : 1,
-        'state' : 2,
-        'first_approved_by' : 3,
-        'first_approved_review_created_at' : 4,
-        'merged_by' : 5,
-        'merged_at' : 6,
-        'is_closed' : 7,
-        'title' : 8
+        'author': 0,
+        'created_at': 1,
+        'state': 2,
+        'first_approved_by': 3,
+        'first_approved_review_created_at': 4,
+        'merged_by': 5,
+        'merged_at': 6,
+        'is_closed': 7,
+        'title': 8
     }
     
     def __init__(self, filename: str):
@@ -446,13 +458,13 @@ class PRExcelWriter:
         return self
 
     def __exit__(self, exception_type, exception_value, tracebackObj):
-        if exception_type != None:
+        if exception_type is not None:
             print(f'PRWriterError: {exception_value}')
-            #print(tracebackObj.tb_frame.stack)
+            # print(tracebackObj.tb_frame.stack)
         self.excelWb.close()
         return self
 
-    def add_new_repo(self, repo_path: str, nOfApprovedPrs: int):
+    def add_new_repo(self, repo_path: str, nOfApprovedPrs: int) -> None:
         if self.line != 0:
             self.line = self.line + 2
 
@@ -470,7 +482,7 @@ class PRExcelWriter:
 
         self.line = self.line + 1 
 
-    def add_new_pullrequest(self, pr: PullRequest):
+    def add_new_pull_request(self, pr: PullRequest) -> None:
         ws = self.excelWorkSheet
         cl = PRExcelWriter.COLUMN_LABELS
 
@@ -483,7 +495,7 @@ class PRExcelWriter:
             end=f"{     ws.write_string(self.line, cl['state'], pr.state)   }\n")
 
         # write first review information
-        if pr.firstReview != None:
+        if pr.firstReview is not None:
             print('writing first approved review date: ', 
                 end=f"{ ws.write_string(self.line, cl['first_approved_by'], pr.firstReview.author) }\n")
             print('writing first approved review date: ', 
@@ -495,7 +507,7 @@ class PRExcelWriter:
                 end=f"{ ws.write_string(self.line, cl['first_approved_review_created_at'], _empty_excel_cell) }\n")
 
         # write info about merging
-        if pr.mergedAt != None:
+        if pr.mergedAt is not None:
             print('writing merge author: ', 
                 end=f"{ ws.write_string(self.line, cl['merged_by'], pr.mergedBy) }\n")
             print('writing merge date: ', 
