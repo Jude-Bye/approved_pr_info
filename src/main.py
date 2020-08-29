@@ -1,22 +1,21 @@
-import json
 import traceback
-import pr_to_excel
+from pr_info_gatherer import output_formats
 import sys
 
-def main(): 
+
+def main() -> int:
     print("App started!")
     try:
-        pr_to_excel.generate_excel(sys.argv #+ [
-            #'-repos', 'Oleh-Dmytrash/Lv-490', 'slicknode/graphql-query-complexity',
-            #'-api_token', './token_file',
-            #'-pr_n', '100' ]
-        )
+        output_formats.to_excel.generate_excel(tuple(sys.argv))
     except Exception as error:
         print(error)
         traceback.print_exc()
-        exit(1)
+        return 1
+
     print("App finished")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    exit(main())
 
