@@ -32,6 +32,8 @@ def generate_excel(argv: Tuple[str]):
 
 
 class PRExcelWriter:
+    """ Class that is used to write PullRequest objects into the .xlsx files """
+
     class Columns(IntEnum):
         author = 0
         created_at = 1
@@ -50,16 +52,20 @@ class PRExcelWriter:
         is_closed = 10
         title = 11
 
+    SMALL_COLUMNS = frozenset([
+        'days_until_first_approved',
+        'days_until_merged',
+        'days_from_approve_to_merge',
+        'is_closed'
+    ])
+
     def __init__(self, filename: str):
         self.__excelWb = xlsxwriter.Workbook(filename=filename)
-        self.__excelWorkSheet = self.__excelWb.add_worksheet('Merged|Approved pull requests')
+        self.__excelWorkSheet: Optional[xlsxwriter.Workbook.worksheet_class] = None
         self.__line = 0
 
         self.__date_format = self.__excelWb.add_format({'num_format': Defines.XLSX_DATE_TIME_FORMAT})
         self.__time_elapse_format = self.__excelWb.add_format({'num_format': Defines.XLSX_TIME_ELAPSED_FORMAT})
-        self.__excelWorkSheet.remove_timezone = True
-        for col in PRExcelWriter.Columns:
-            self.__excelWorkSheet.set_column(0, col.value, Defines.XLSX_COLUMN_WIDTH)
 
     @property
     def worksheet(self):
@@ -72,6 +78,17 @@ class PRExcelWriter:
     def increment_line(self, by: int = 1) -> int:
         self.__line += by
         return self.__line
+
+    def add_worksheet(self, sheetName: str) -> None:
+        self.__excelWorkSheet = self.__excelWb.add_worksheet(sheetName)
+        self.__excelWorkSheet.remove_timezone = True
+        for col in PRExcelWriter.Columns:
+            if col.name in PRExcelWriter.SMALL_COLUMNS:
+                widthVal = Defines.XLSX_SMALL_COLUMN_WIDTH
+            else:
+                widthVal = Defines.XLSX_COLUMN_WIDTH
+            self.__excelWorkSheet.set_column(col.value, col.value, widthVal)
+        self.__line = 0
 
     def close(self):
         return self.__excelWb.close()
@@ -125,15 +142,23 @@ class PRExcelWriter:
 
 
 class PRExcelManager:
+    """ Class that is managing how ExcelWriter class writes PullRequests into the .xlsx files """
+
+    DEFAULT_WORKSHEET_NAME = 'Merged|Approved pull requests'
 
     def __init__(self, *args):
         self.filemode: FileMode = args[0]
         self.writer: Optional[PRExcelWriter]
 
-        if self.filemode == FileMode.single:
-            self.writer = PRExcelWriter(args[1])
-        else:
+        if self.filemode not in FileMode or self.filemode == FileMode.placeholder:
+            raise RuntimeError(f'Invalid filemode value was given to PRExcelManager: {self.filemode}')
+
+        if self.filemode == FileMode.split_auto:
             self.writer = None
+        else:
+            self.writer = PRExcelWriter(args[1])
+            if self.filemode == FileMode.single:
+                self.writer.add_worksheet(PRExcelManager.DEFAULT_WORKSHEET_NAME)
 
     def __enter__(self):
         return self
@@ -159,10 +184,14 @@ class PRExcelManager:
                 raise RuntimeError(f'Could not add repo_path: "{repo_path}", line: {self.writer.line}')
 
             self.writer.increment_line()
+        elif self.filemode == FileMode.single_sheets:
+            # FileMode.single_sheets
+            self.writer.add_worksheet(PRExcelManager.repo_path_to_name(repo_path))
         else:
             # FileMode.split_auto
             self.close()
-            self.writer = PRExcelWriter(f'{repo_path.replace("/", "--")}{Defines.XLSX_FILE_EXTENSION}')
+            self.writer = PRExcelWriter(f'{PRExcelManager.repo_path_to_name(repo_path)}{Defines.XLSX_FILE_EXTENSION}')
+            self.writer.add_worksheet(PRExcelManager.DEFAULT_WORKSHEET_NAME)
 
         if nOfApprovedPrs > 0:
             for col in PRExcelWriter.Columns:
@@ -176,3 +205,7 @@ class PRExcelManager:
 
     def add_new_pull_request(self, pr: PullRequest) -> None:
         self.writer.write_pull_request(pr)
+
+    @staticmethod
+    def repo_path_to_name(repoPath: str) -> str:
+        return repoPath.replace("/", "--")[0:Defines.XLSX_SHEET_NAME_CHAR_LIMIT]

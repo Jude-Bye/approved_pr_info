@@ -150,12 +150,14 @@ class FileMode(IntEnum):
     Enum for possible file modes:
     * placeholder - used as dummy initializer
     * single - used to tell formatter to output to single file, named by user(name can also come from default value)
+    * single_sheets - same as single, but each repository is written to separate sheet
     * split_auto - used to tell formatter to output to multiple files, and name them automatically
     """
 
     placeholder = -1,
     single = 0
-    split_auto = 1
+    single_sheets = 1,
+    split_auto = 2
 
 
 class FileModeCLArg(CommandLineArgParser):
@@ -183,11 +185,10 @@ class FileModeCLArg(CommandLineArgParser):
                 return iterIndex, RuntimeError(f'Unknown file mode: {filemodeStr}')
             else:
                 mode = FileMode[filemodeStr]
-                if mode == FileMode.single:
+                if mode == FileMode.single or mode == FileMode.single_sheets:
                     warn_assert(len(restArgs) == 1, lambda: 'More than one filename string was provided, '
                                                             f'n = {len(restArgs)}')
                     self.args = [restArgs[0]]
-
                 elif mode == FileMode.split_auto:
                     warn_assert(len(restArgs) == 0, lambda: 'Number of provided arguments is not zero with '
                                                             f'filemode = split_auto, n = {len(restArgs)}')

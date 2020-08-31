@@ -180,6 +180,7 @@ query(
 
 
 def fetch_json(repoPath: str, inputDict: dict, headers: dict) -> PullRequestQueryJson:
+    print(repoPath)
     repo_owner, repo_name = repoPath.split('/')
 
     variables = f"""{{

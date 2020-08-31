@@ -26,7 +26,7 @@ def parse_cli_args(argv: Tuple[str]):
         RepoCLArg.CLI_TEXT: [],
         ApiTokenCLArg.CLI_TEXT: Defines.DEFAULT_TOKEN,
         NumberOfRequestsCLArg.CLI_TEXT: 10,
-        FileModeCLArg.CLI_TEXT: [FileMode.split_auto],
+        FileModeCLArg.CLI_TEXT: [FileMode.single_sheets],
         ApiEndpointCLArg.CLI_TEXT: Defines.DEFAULT_API_ENDPOINT
     }
     iterIndex = 1
@@ -34,21 +34,21 @@ def parse_cli_args(argv: Tuple[str]):
     usedSwitches = set()
 
     while iterIndex < argvCount:
-        cmdSwitch: CommandLineArgParser
-        cmdKey: str = argv[iterIndex]
+        cliSwitch: CommandLineArgParser
+        cliKey: str = argv[iterIndex]
 
-        if cmdKey not in Defines_CLI.SWITCHES:
-            raise RuntimeError(f'Unknown switch: "{cmdKey}"')
-        elif cmdKey in usedSwitches:
-            raise RuntimeError(f'Duplicate switch: "{cmdKey}"')
+        if cliKey not in Defines_CLI.SWITCHES:
+            raise RuntimeError(f'Unknown switch: "{cliKey}"')
+        elif cliKey in usedSwitches:
+            raise RuntimeError(f'Duplicate switch: "{cliKey}"')
         else:
-            cmdSwitch = Defines_CLI.SWITCHES[cmdKey]
-            iterIndex, err = cmdSwitch.read_args(iterIndex, argv)
+            cliSwitch = Defines_CLI.SWITCHES[cliKey]
+            iterIndex, err = cliSwitch.read_args(iterIndex, argv)
             if err is not None:
                 raise err
-            cmdSwitch.apply_arg(cmdKey, inputDict)
+            cliSwitch.apply_arg(cliKey, inputDict)
 
         iterIndex += 1
-        usedSwitches.add(cmdKey)
+        usedSwitches.add(cliKey)
 
     return inputDict
