@@ -1,6 +1,7 @@
 from pr_info_gatherer.cli_args import RepoCLArg, ApiTokenCLArg, NumberOfRequestsCLArg, FileModeCLArg, \
     ApiEndpointCLArg, CommandLineArgParser, FileMode
 from pr_info_gatherer.const_defines import Defines
+from pr_info_gatherer.common import UserInputError
 from typing import Tuple
 
 
@@ -26,7 +27,7 @@ def parse_cli_args(argv: Tuple[str]):
         RepoCLArg.CLI_TEXT: [],
         ApiTokenCLArg.CLI_TEXT: Defines.DEFAULT_TOKEN,
         NumberOfRequestsCLArg.CLI_TEXT: 10,
-        FileModeCLArg.CLI_TEXT: [FileMode.single_sheets],
+        FileModeCLArg.CLI_TEXT: [FileMode.single_sheets, Defines.DEFAULT_FILE_NAME],
         ApiEndpointCLArg.CLI_TEXT: Defines.DEFAULT_API_ENDPOINT
     }
     iterIndex = 1
@@ -38,9 +39,9 @@ def parse_cli_args(argv: Tuple[str]):
         cliKey: str = argv[iterIndex]
 
         if cliKey not in Defines_CLI.SWITCHES:
-            raise RuntimeError(f'Unknown switch: "{cliKey}"')
+            raise UserInputError(f'Unknown switch: "{cliKey}"')
         elif cliKey in usedSwitches:
-            raise RuntimeError(f'Duplicate switch: "{cliKey}"')
+            raise UserInputError(f'Duplicate switch: "{cliKey}"')
         else:
             cliSwitch = Defines_CLI.SWITCHES[cliKey]
             iterIndex, err = cliSwitch.read_args(iterIndex, argv)

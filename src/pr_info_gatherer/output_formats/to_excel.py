@@ -1,9 +1,11 @@
 from typing import List, Tuple, Optional, Type, Callable, Any, Union
 from types import TracebackType
 import traceback
+from os import path
 import xlsxwriter
 from enum import IntEnum
 from pr_info_gatherer.const_defines import Defines
+from pr_info_gatherer.common import UserInputError
 from pr_info_gatherer.cli_args import RepoCLArg, ApiTokenCLArg, FileModeCLArg, FileMode
 from pr_info_gatherer.pull_request import PullRequest, PullRequestQueryJson, fetch_json
 from pr_info_gatherer.cli_parser import parse_cli_args
@@ -11,6 +13,9 @@ from pr_info_gatherer.cli_parser import parse_cli_args
 
 def generate_excel(argv: Tuple[str]):
     inputDict = parse_cli_args(argv)
+    if len(inputDict[RepoCLArg.CLI_TEXT]) == 0:
+        raise UserInputError('No repository paths were provided')
+
     headers = {'Authorization': f'token {inputDict[ApiTokenCLArg.CLI_TEXT]}'}
 
     with PRExcelManager(*inputDict[FileModeCLArg.CLI_TEXT]) as excelFile:
@@ -145,6 +150,7 @@ class PRExcelManager:
     """ Class that is managing how ExcelWriter class writes PullRequests into the .xlsx files """
 
     DEFAULT_WORKSHEET_NAME = 'Merged|Approved pull requests'
+    FILE_EXTENSION = '.xlsx'
 
     def __init__(self, *args):
         self.filemode: FileMode = args[0]
@@ -156,7 +162,12 @@ class PRExcelManager:
         if self.filemode == FileMode.split_auto:
             self.writer = None
         else:
-            self.writer = PRExcelWriter(args[1])
+            filename: str = args[1]
+            _, extension = path.splitext(filename)
+            if extension != PRExcelManager.FILE_EXTENSION:
+                filename += PRExcelManager.FILE_EXTENSION
+
+            self.writer = PRExcelWriter(filename)
             if self.filemode == FileMode.single:
                 self.writer.add_worksheet(PRExcelManager.DEFAULT_WORKSHEET_NAME)
 
@@ -165,10 +176,9 @@ class PRExcelManager:
 
     def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException],
                  exc_trace: Optional[TracebackType]) -> None:
-        if exc_val is not None:
-            print(f'PRWriterError: {exc_val}')
-            traceback.print_exc()
         self.close()
+        if exc_val is not None:
+            raise exc_val
 
     def close(self):
         if self.writer is not None:

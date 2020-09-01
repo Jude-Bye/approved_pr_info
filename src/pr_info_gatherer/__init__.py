@@ -1,1 +1,3 @@
 import pr_info_gatherer.output_formats as output_formats
+from pr_info_gatherer.common import UserInputError
+

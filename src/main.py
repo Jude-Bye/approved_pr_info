@@ -1,18 +1,18 @@
 import traceback
-from pr_info_gatherer import output_formats
+from pr_info_gatherer import output_formats, UserInputError
 import sys
 
 
 def main() -> int:
-    print("App started!")
+    # print("App started!")
+
     try:
         output_formats.to_excel.generate_excel(tuple(sys.argv))
-    except Exception as error:
-        print(error)
-        traceback.print_exc()
+    except UserInputError as userError:
+        print(f'Invalid input: {userError}!')
         return 1
 
-    print("App finished")
+    # print("App finished")
     return 0
 
 

@@ -21,7 +21,6 @@ def parse_iso_date(iso8601date: str) -> Tuple[datetime, Optional[Exception]]:
 
 def run_query(query: str, variables: Optional[str], headers: dict, endpoint: str) -> dict:
     """ Sends http request to github graphql api """
-
     requestJson: dict = {'query': query}
     if variables is not None:
         requestJson['variables'] = variables
@@ -33,7 +32,10 @@ def run_query(query: str, variables: Optional[str], headers: dict, endpoint: str
             raise RuntimeError(f'Query returned errors: {jsonResult}')
         return jsonResult
     else:
-        raise RuntimeError(f'Query failed to run by returning code of "{request.status_code}"'
+        if request.status_code == 401:
+            raise UserInputError('Invalid token was provided')
+        else:
+            raise RuntimeError(f'Query failed to run by returning code of "{request.status_code}"'
                            f', reason: "{request.reason}", query was: "{query}"')
 
 
@@ -55,4 +57,7 @@ def warn_assert(value: bool, lazyMessage: Callable[[], str]):
     """ Prints warning if given value is false """
     if not value:
         warnings.warn(lazyMessage())
+
+class UserInputError(Exception):
+    pass
 

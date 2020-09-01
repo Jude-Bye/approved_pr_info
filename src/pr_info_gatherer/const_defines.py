@@ -8,6 +8,8 @@ class Defines:
     DEFAULT_OUTPUT_EXCEL = './pr_info.xlsx'
     DEFAULT_DATE_STR = "0001-01-01T00:00:00Z"
 
+    DEFAULT_FILE_NAME = 'merged_approved_pull_requests'
+
     XLSX_DATE_TIME_FORMAT = 'hh:mm dd/mm/yy'
     XLSX_TIME_ELAPSED_FORMAT = 'd'
     XLSX_EMPTY_CELL = 'N/A'

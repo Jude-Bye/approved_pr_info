@@ -1,9 +1,9 @@
-from pr_info_gatherer.common import enum_with_checks, Defines, warn_assert
+from pr_info_gatherer.const_defines import Defines
+from pr_info_gatherer.common import enum_with_checks, warn_assert, UserInputError
 import abc
 import copy
 from typing import List, Tuple, Optional, Union
 from enum import IntEnum
-import traceback
 import os
 
 ####################################
@@ -29,7 +29,7 @@ class CommandLineArgParser(abc.ABC):
 
     def validate_cmd_text(self, comp: str):
         if self.cli_text != comp:
-            raise RuntimeError(f'Given argument does not match cmd_text: "{self.cli_text}" vs "{comp}"')
+            raise UserInputError(f'Given argument does not match cmd_text: "{self.cli_text}" vs "{comp}"')
 
     @staticmethod
     def _read_args_until_next_command(iterIndex: int, argv: Tuple[str], switchName: str, expectedCount: int = -1) \
@@ -40,13 +40,13 @@ class CommandLineArgParser(abc.ABC):
 
         while i < count and argv[i][0] != '-':
             if not isinstance(argv[i], str):
-                raise RuntimeError(f'Invalid argument type: {type(argv[i])}')
+                raise UserInputError(f'Invalid argument type: {type(argv[i])}')
             retVal.append(argv[i])
             i += 1
 
         gatheredCount = i - iterIndex
         if gatheredCount <= 0:
-            raise RuntimeError(f'No arguments were provided for switch[{switchName}] -> "{count}"')
+            raise UserInputError(f'No arguments were provided for switch \'{switchName}\'')
         if expectedCount > 0:
             warn_assert(gatheredCount == expectedCount, lambda: 'Unexpected count of arguments for '
                                                                 f'switch[{switchName}] -> "{gatheredCount}"')
@@ -73,7 +73,6 @@ class RepoCLArg(CommandLineArgParser):
             newIndex, repos = CommandLineArgParser._read_args_until_next_command(iterIndex + 1, argv, self.cli_text)
             self.repoList.extend(repos)
         except Exception as exc:
-            traceback.print_exc()
             err = exc
             newIndex = iterIndex
 
@@ -105,12 +104,11 @@ class ApiTokenCLArg(CommandLineArgParser):
                     self.token = str(tokenFile.read(Defines.TOKEN_LENGTH), Defines.TOKEN_FILE_ENCODING)
             else:
                 if len(tokenString) != Defines.TOKEN_LENGTH:
-                    raise RuntimeError(f'Token argument, is not an existing directory nor a key of proper length')
+                    raise UserInputError(f'Token argument, is not an existing directory nor a key of proper length')
                 self.token = tokenString
 
             return newIndex, None
         except Exception as err:
-            traceback.print_exc()
             return iterIndex, err
 
 
@@ -140,7 +138,6 @@ class NumberOfRequestsCLArg(CommandLineArgParser):
             else:
                 return iterIndex, RuntimeError(f'Invalid pull requests count value: {nValue}')
         except Exception as err:
-            traceback.print_exc()
             return iterIndex, err
 
 
@@ -198,7 +195,6 @@ class FileModeCLArg(CommandLineArgParser):
 
             return newIndex, None
         except Exception as error:
-            traceback.print_exc()
             return iterIndex, error
 
     def apply_arg(self, targetKey: str, targetDict: dict):
@@ -224,7 +220,6 @@ class ApiEndpointCLArg(CommandLineArgParser):
             self.endpoint = endpoint
             return newIndex, None
         except Exception as error:
-            traceback.print_exc()
             return iterIndex, error
 
     def apply_arg(self, targetKey: str, targetDict: dict):
