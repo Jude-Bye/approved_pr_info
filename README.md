@@ -1,3 +1,4 @@
+### Little convinience application that provices overview of how much time it takes to open and close pull request in the given repository
 ### Fetches information about pull requests that have at least one approved review and/or are merged
 	--
 	Obligatory arguments:
